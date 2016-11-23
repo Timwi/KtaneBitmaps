@@ -1,0 +1,7 @@
+o Screen
+v -1 0 -1
+v -1 0 1
+v 1 0 1
+v 1 0 -1
+g Screen
+f 1 2 3 4

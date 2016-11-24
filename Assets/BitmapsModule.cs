@@ -10,7 +10,7 @@ using Rnd = UnityEngine.Random;
 
 /// <summary>
 /// On the Subject of Bitmaps
-/// Created by Timwi
+/// Created by lumbud84, implemented by Timwi
 /// </summary>
 public class BitmapsModule : MonoBehaviour
 {

@@ -45,15 +45,16 @@ public class BitmapsModule : MonoBehaviour
                 bitmap[j][i] = val;
                 if (val)
                 {
+                    // The bitmap is displayed mirrored in the X direction, so swap left/right here
                     if (j < 4)
                         if (i < 4)
-                            _numTopLeft++;
-                        else
                             _numTopRight++;
+                        else
+                            _numTopLeft++;
                     else if (i < 4)
-                        _numBottomLeft++;
-                    else
                         _numBottomRight++;
+                    else
+                        _numBottomLeft++;
                 }
             }
         }
@@ -89,7 +90,7 @@ public class BitmapsModule : MonoBehaviour
             _buttonToPush = 2;
         else if (_numTopLeft > 8)
             _buttonToPush = 3;
-        else if (_numTopLeft + _numBottomLeft >= 17)
+        else if (_numTopLeft + _numBottomLeft <= 15)
             _buttonToPush = 1;
         else if (Bomb.GetSerialNumber().Any("AEIOU".Contains))
             _buttonToPush = 3;

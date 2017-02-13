@@ -26,9 +26,13 @@ public class BitmapsModule : MonoBehaviour
     private int _buttonToPush = 0;
     private int _numTopLeft = 0, _numTopRight = 0, _numBottomLeft = 0, _numBottomRight = 0;
 
+    private static int _moduleIdCounter = 1;
+    private int _moduleId;
+
     void Start()
     {
-        Debug.Log("[Bitmaps] Started.");
+        _moduleId = _moduleIdCounter++;
+
         Module.OnActivate += ActivateModule;
         Buttons[0].OnInteract += delegate { PushButton(1); return false; };
         Buttons[1].OnInteract += delegate { PushButton(2); return false; };
@@ -69,7 +73,7 @@ public class BitmapsModule : MonoBehaviour
             return;
         Buttons[btn - 1].AddInteractionPunch();
         Audio.PlayGameSoundAtTransform(KMSoundOverride.SoundEffect.ButtonPress, Buttons[btn - 1].transform);
-        Debug.LogFormat("[Bitmaps] You pushed button #{0}. I expected #{1}.", btn, _buttonToPush);
+        Debug.LogFormat("[Bitmaps #{2}] You pushed button #{0}. I expected #{1}.", btn, _buttonToPush, _moduleId);
         if (btn != _buttonToPush)
             Module.HandleStrike();
         else
@@ -101,7 +105,7 @@ public class BitmapsModule : MonoBehaviour
         else
             _buttonToPush = 2;
 
-        Debug.LogFormat("[Bitmaps] Top left={0}, top right={1}, bottom left={2}, bottom right={3}, serial={4}, batteries={5}, button to push={6}", _numTopLeft, _numTopRight, _numBottomLeft, _numBottomRight, Bomb.GetSerialNumber(), Bomb.GetBatteryCount(), _buttonToPush);
+        Debug.LogFormat("[Bitmaps #{7}] Top left={0} white, top right={1} white, bottom left={2} white, bottom right={3} white, serial={4}, batteries={5}, button to push={6}", _numTopLeft, _numTopRight, _numBottomLeft, _numBottomRight, Bomb.GetSerialNumber(), Bomb.GetBatteryCount(), _buttonToPush, _moduleId);
     }
 
     private Texture generateTexture(bool[][] bitmap)

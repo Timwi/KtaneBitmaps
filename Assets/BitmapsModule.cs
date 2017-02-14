@@ -69,10 +69,10 @@ public class BitmapsModule : MonoBehaviour
 
     private void PushButton(int btn)
     {
-        if (_buttonToPush == 0)
-            return;
         Buttons[btn - 1].AddInteractionPunch();
         Audio.PlayGameSoundAtTransform(KMSoundOverride.SoundEffect.ButtonPress, Buttons[btn - 1].transform);
+        if (_buttonToPush == 0)
+            return;
         Debug.LogFormat("[Bitmaps #{2}] You pushed button #{0}. I expected #{1}.", btn, _buttonToPush, _moduleId);
         if (btn != _buttonToPush)
             Module.HandleStrike();

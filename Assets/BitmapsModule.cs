@@ -86,33 +86,62 @@ public class BitmapsModule : MonoBehaviour
 
     void ActivateModule()
     {
+        int rule;
         if (_numTopLeft + _numTopRight < 16)
+        {
             _buttonToPush = 2;
+            rule = 1;
+        }
         else if (_numTopLeft + _numTopRight + _numBottomLeft + _numBottomRight > 32)
+        {
             _buttonToPush = 4;
+            rule = 2;
+        }
         else if (_numBottomLeft + _numBottomRight > 16)
+        {
             _buttonToPush = 1;
+            rule = 3;
+        }
         else if (_numTopRight + _numBottomRight <= 16)
+        {
             _buttonToPush = 2;
+            rule = 4;
+        }
         else if (_numTopLeft > 8)
+        {
             _buttonToPush = 3;
+            rule = 5;
+        }
         else if (_numTopLeft + _numBottomLeft <= 15)
+        {
             _buttonToPush = 1;
+            rule = 6;
+        }
         else if (Bomb.GetSerialNumber().Any("AEIOU".Contains))
+        {
             _buttonToPush = 3;
+            rule = 7;
+        }
         else if (Bomb.GetBatteryCount() >= 3)
+        {
             _buttonToPush = 4;
+            rule = 8;
+        }
         else
+        {
             _buttonToPush = 2;
+            rule = 9;
+        }
 
-        Debug.LogFormat("[Bitmaps #{7}] Top left={0} white, top right={1} white, bottom left={2} white, bottom right={3} white, serial={4}, batteries={5}, button to push={6}", _numTopLeft, _numTopRight, _numBottomLeft, _numBottomRight, Bomb.GetSerialNumber(), Bomb.GetBatteryCount(), _buttonToPush, _moduleId);
+        Debug.LogFormat("[Bitmaps #{7}] Top left={0} white, top right={1} white, bottom left={2} white, bottom right={3} white, serial={4}, batteries={5}, button to push={6} according to rule #{8}",
+            _numTopLeft, _numTopRight, _numBottomLeft, _numBottomRight, Bomb.GetSerialNumber(), Bomb.GetBatteryCount(), _buttonToPush, _moduleId, rule);
     }
 
     private Texture generateTexture(bool[][] bitmap)
     {
-        const int padding = 5;
-        const int thickSpacing = 3;
-        const int thinSpacing = 1;
+        const int padding = 9;
+        const int thickSpacing = 6;
+        const int thinSpacing = 3;
         const int cellWidth = 30;
 
         const int bitmapSize = 8 * cellWidth + 6 * thinSpacing + 1 * thickSpacing + 2 * padding;

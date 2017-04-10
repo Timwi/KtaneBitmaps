@@ -199,4 +199,16 @@ public class BitmapsModule : MonoBehaviour
         tex.Apply();
         return tex;
     }
+
+    KMSelectable[] ProcessTwitchCommand(string command)
+    {
+        switch (command.Trim().Replace("  ", " ").ToLowerInvariant())
+        {
+            case "press 1":return new[] { Buttons[0] };
+            case "press 2": return new[] { Buttons[1] };
+            case "press 3": return new[] { Buttons[2] };
+            case "press 4": return new[] { Buttons[3] };
+        }
+        return null;
+    }
 }

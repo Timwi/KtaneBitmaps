@@ -87,7 +87,7 @@ public class BitmapsModule : MonoBehaviour
         return qCounts;
     }
 
-    private const int quadrantCount = 5;
+    private const int rule0And6Number = 5;
 
     sealed class RuleInfo
     {
@@ -105,15 +105,16 @@ public class BitmapsModule : MonoBehaviour
     RuleInfo quadrantCountRule(bool white)
     {
         return new RuleInfo(
-            string.Format("Exactly one quadrant has {0} or fewer {1} pixels", quadrantCount, white ? "white" : "black"),
+            string.Format("Exactly one quadrant has {0} or fewer {1} pixels", rule0And6Number, white ? "white" : "black"),
             string.Format("Number of {0} pixels in the other 3 quadrants", white ? "white" : "black"),
             arr =>
             {
                 var qCounts = getQuadrantCounts();
-                if ((white ? qCounts.Count(sum => sum <= quadrantCount) : qCounts.Count(sum => sum >= (16 - quadrantCount))) != 1)
+                if ((white ? qCounts.Count(sum => sum <= rule0And6Number) : qCounts.Count(sum => sum >= (16 - rule0And6Number))) != 1)
                     return 0;
-                var qIx = (white ? qCounts.IndexOf(sum => sum <= quadrantCount) : qCounts.IndexOf(sum => sum >= (16 - quadrantCount)));
-                return (qCounts.Where((sum, ix) => ix != qIx).Sum() + 3) % 4 + 1;
+                var qIx = (white ? qCounts.IndexOf(sum => sum <= rule0And6Number) : qCounts.IndexOf(sum => sum >= (16 - rule0And6Number)));
+                var otherQuadrantCount = qCounts.Where((sum, ix) => ix != qIx).Sum();
+                return ((white ? otherQuadrantCount : 48 - otherQuadrantCount) + 3) % 4 + 1;
             });
     }
 
@@ -149,7 +150,8 @@ public class BitmapsModule : MonoBehaviour
 
                 if (answer != 0)
                     return 0;
-                answer = ((x + 3) % 4) + 1;
+                // The coordinate is 0-based, but the answer needs to be 1-based.
+                answer = (x % 4) + 1;
 
                 next:;
             }
@@ -162,7 +164,8 @@ public class BitmapsModule : MonoBehaviour
 
                 if (answer != 0)
                     return 0;
-                answer = ((y + 3) % 4) + 1;
+                // The coordinate is 0-based, but the answer needs to be 1-based.
+                answer = (y % 4) + 1;
 
                 next:;
             }
@@ -182,7 +185,8 @@ public class BitmapsModule : MonoBehaviour
                         for (int yy = -1; yy < 2; yy++)
                             if (arr[x + xx][y + yy] != isWhite)
                                 goto next;
-                    return ((x + 3) % 4) + 1;
+                    // x is 0-based, but the answer needs to be 1-based.
+                    return (x % 4) + 1;
                     next:;
                 }
             return 0;
@@ -229,7 +233,7 @@ public class BitmapsModule : MonoBehaviour
             rowColumnRule,
             quadrantMajorityRule("There are fewer mostly-white quadrants than mostly-black quadrants", "Number of mostly-black quadrants", (b, w) => w < b, (b, w, arr) => b),
             totalCountRule(36, true),
-            quadrantMajorityRule("There are more mostly-white quadrants than mostly-black quadrants", "Smallest number of black in any quadrant", (b, w) => w > b, (b, w, arr) => getQuadrantCounts().Min()),
+            quadrantMajorityRule("There are more mostly-white quadrants than mostly-black quadrants", "Smallest number of black in any quadrant", (b, w) => w > b, (b, w, arr) => 16 - getQuadrantCounts().Max()),
             quadrantCountRule(false),
             quadrantMajorityRule("There are exactly as many mostly-black quadrants as there are unlit indicators", "Number of ports", (b, w) => b == unlitIndicators, (b, w, arr) => numPorts),
             squareRule,

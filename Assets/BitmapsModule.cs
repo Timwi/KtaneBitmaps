@@ -237,7 +237,7 @@ public class BitmapsModule : MonoBehaviour
             quadrantCountRule(false),
             quadrantMajorityRule("There are exactly as many mostly-black quadrants as there are unlit indicators", "Number of ports", (b, w) => b == unlitIndicators, (b, w, arr) => numPorts),
             squareRule,
-            quadrantMajorityRule("There are as many mostly-white quadrants as mostly-black quadrants", "First numeric digit of the serial number", (b, w) => w == b, (b, w, arr) => firstSerialDigit));
+            quadrantMajorityRule("There are exactly as many mostly-white quadrants as mostly-black quadrants", "First numeric digit of the serial number", (b, w) => w == b, (b, w, arr) => firstSerialDigit));
 
         var startRule = Bomb.GetSerialNumberNumbers().Last();
         Debug.LogFormat("[Bitmaps #{0}] Starting rule: {1}", _moduleId, startRule);

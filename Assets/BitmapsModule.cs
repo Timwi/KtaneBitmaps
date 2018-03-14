@@ -327,6 +327,10 @@ public class BitmapsModule : MonoBehaviour
         return tex;
     }
 
+#pragma warning disable 414
+    private string TwitchHelpMessage = @"Submit the correct answer with “!{0} press 2”.";
+#pragma warning restore 414
+
     KMSelectable[] ProcessTwitchCommand(string command)
     {
         switch (command.Trim().Replace("  ", " ").ToLowerInvariant())

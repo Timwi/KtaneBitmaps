@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.Linq;
 using Bitmaps;
+using KModkit;
 using UnityEngine;
 
 using Rnd = UnityEngine.Random;
@@ -20,17 +21,21 @@ public class BitmapsModule : MonoBehaviour
     public Mesh PlaneMesh;
     public KMSelectable[] Buttons;
     public MeshRenderer Bitmap;
+    public KMRuleSeedable RuleSeedable;
 
-    private int _buttonToPush = 0;
     private bool[][] _bitmap;
-    private RuleInfo _triggeredRule;
+    private bool _isSolved;
+    private bool _defaultRuleset;
+    private Rule[] _rules;
+    private EdgeworkValue _startRule;
 
     private static int _moduleIdCounter = 1;
     private int _moduleId;
 
-    private static Color[] _lightColors = new[] { new Color(1, .9f, .9f), new Color(.9f, 1, .9f), new Color(.9f, .9f, 1), new Color(1, 1, .9f), new Color(.9f, 1, 1), new Color(1, .9f, 1) };
-    private static Color[] _darkColors = new[] { new Color(.75f, .5f, .5f), new Color(.5f, .75f, .5f), new Color(.5f, .5f, .75f), new Color(.75f, .75f, .5f), new Color(.5f, .75f, .75f), new Color(.75f, .5f, .75f) };
-    private static string[] _colorNames = new[] { "red", "green", "blue", "yellow", "cyan", "pink" };
+    private static readonly Color[] _lightColors = new[] { new Color(1, .9f, .9f), new Color(.9f, 1, .9f), new Color(.9f, .9f, 1), new Color(1, 1, .9f), new Color(.9f, 1, 1), new Color(1, .9f, 1) };
+    private static readonly Color[] _darkColors = new[] { new Color(.75f, .5f, .5f), new Color(.5f, .75f, .5f), new Color(.5f, .5f, .75f), new Color(.75f, .75f, .5f), new Color(.5f, .75f, .75f), new Color(.75f, .5f, .75f) };
+    private static readonly string[] _colorNames = new[] { "red", "green", "blue", "yellow", "cyan", "pink" };
+
     private static int _colorIxCounter = -1;
     private int _colorIx;
 
@@ -40,7 +45,6 @@ public class BitmapsModule : MonoBehaviour
         _colorIx = _colorIxCounter;
 
         _moduleId = _moduleIdCounter++;
-        Module.OnActivate += ActivateModule;
         Buttons[0].OnInteract += delegate { PushButton(1); return false; };
         Buttons[1].OnInteract += delegate { PushButton(2); return false; };
         Buttons[2].OnInteract += delegate { PushButton(3); return false; };
@@ -53,163 +57,11 @@ public class BitmapsModule : MonoBehaviour
             for (int i = 0; i < 8; i++)
                 _bitmap[j][i] = Rnd.Range(0, 2) == 0;
         }
+        _isSolved = false;
 
         Bitmap.material.mainTexture = generateTexture();
         Bitmap.material.shader = Shader.Find("Unlit/Transparent");
-    }
 
-    private void PushButton(int btn)
-    {
-        Buttons[btn - 1].AddInteractionPunch();
-        Audio.PlayGameSoundAtTransform(KMSoundOverride.SoundEffect.ButtonPress, Buttons[btn - 1].transform);
-        if (_buttonToPush == 0)
-            return;
-        Debug.LogFormat("[Bitmaps #{2}] You pushed button #{0}. I expected #{1}.", btn, _buttonToPush, _moduleId);
-        if (btn != _buttonToPush)
-            Module.HandleStrike();
-        else
-        {
-            Module.HandlePass();
-            _buttonToPush = 0;
-            Bitmap.gameObject.SetActive(false);
-        }
-    }
-
-    int[] getQuadrantCounts()
-    {
-        var qCounts = new int[4];
-        for (int x = 0; x < 8; x++)
-            for (int y = 0; y < 8; y++)
-                if (_bitmap[x][y])
-                    qCounts[(y / 4) * 2 + (x / 4)]++;
-        return qCounts;
-    }
-
-    private const int rule0And6Number = 5;
-
-    sealed class RuleInfo
-    {
-        public string Name { get; private set; }
-        public string Action { get; private set; }
-        public Func<bool[][], int> GetAnswer { get; private set; }
-        public RuleInfo(string name, string action, Func<bool[][], int> getAnswer)
-        {
-            Name = name;
-            Action = action;
-            GetAnswer = getAnswer;
-        }
-    }
-
-    RuleInfo quadrantCountRule(bool white)
-    {
-        return new RuleInfo(
-            string.Format("Exactly one quadrant has {0} or fewer {1} pixels", rule0And6Number, white ? "white" : "black"),
-            string.Format("Number of {0} pixels in the other 3 quadrants", white ? "white" : "black"),
-            arr =>
-            {
-                var qCounts = getQuadrantCounts();
-                if ((white ? qCounts.Count(sum => sum <= rule0And6Number) : qCounts.Count(sum => sum >= (16 - rule0And6Number))) != 1)
-                    return 0;
-                var qIx = (white ? qCounts.IndexOf(sum => sum <= rule0And6Number) : qCounts.IndexOf(sum => sum >= (16 - rule0And6Number)));
-                var otherQuadrantCount = qCounts.Where((sum, ix) => ix != qIx).Sum();
-                return ((white ? otherQuadrantCount : 48 - otherQuadrantCount) + 3) % 4 + 1;
-            });
-    }
-
-    RuleInfo totalCountRule(int num, bool white)
-    {
-        return new RuleInfo(
-            string.Format("The entire bitmap has {0} or more {1} pixels", num, white ? "white" : "black"),
-            string.Format("Number of {0} pixels", white ? "white" : "black"),
-            arr =>
-            {
-                var sum = 0;
-                for (int x = 0; x < 8; x++)
-                    for (int y = 0; y < 8; y++)
-                        sum += (arr[x][y] ^ white) ? 0 : 1;
-                if (sum >= num)
-                    return ((sum + 3) % 4) + 1;
-                return 0;
-            });
-    }
-
-    RuleInfo rowColumnRule = new RuleInfo(
-        "Exactly one row or column is completely white or completely black",
-        "x- or y-coordinate",
-        arr =>
-        {
-            int answer = 0;
-            for (int x = 0; x < 8; x++)
-            {
-                var isWhite = arr[x][0];
-                for (int y = 1; y < 8; y++)
-                    if (arr[x][y] != isWhite)
-                        goto next;
-
-                if (answer != 0)
-                    return 0;
-                // The coordinate is 0-based, but the answer needs to be 1-based.
-                answer = (x % 4) + 1;
-
-                next:;
-            }
-            for (int y = 0; y < 8; y++)
-            {
-                var isWhite = arr[0][y];
-                for (int x = 1; x < 8; x++)
-                    if (arr[x][y] != isWhite)
-                        goto next;
-
-                if (answer != 0)
-                    return 0;
-                // The coordinate is 0-based, but the answer needs to be 1-based.
-                answer = (y % 4) + 1;
-
-                next:;
-            }
-            return answer;
-        });
-
-    RuleInfo squareRule = new RuleInfo(
-        "There is a 3×3 square that is completely white or completely black",
-        "x-coordinate of center of first in reading order",
-        arr =>
-        {
-            for (int y = 1; y < 7; y++)
-                for (int x = 1; x < 7; x++)
-                {
-                    var isWhite = arr[x][y];
-                    for (int xx = -1; xx < 2; xx++)
-                        for (int yy = -1; yy < 2; yy++)
-                            if (arr[x + xx][y + yy] != isWhite)
-                                goto next;
-                    // x is 0-based, but the answer needs to be 1-based.
-                    return (x % 4) + 1;
-                    next:;
-                }
-            return 0;
-        });
-
-    RuleInfo quadrantMajorityRule(string name, string action, Func<int, int, bool> compare, Func<int, int, bool[][], int> getAnswer)
-    {
-        return new RuleInfo(
-            name,
-            action,
-            arr =>
-            {
-                var quadrantCounts = new int[4];
-                for (int x = 0; x < 8; x++)
-                    for (int y = 0; y < 8; y++)
-                        if (arr[x][y])
-                            quadrantCounts[(x / 4) * 2 + (y / 4)]++;
-                var w = quadrantCounts.Count(q => q > 8);
-                var b = quadrantCounts.Count(q => q < 8);
-                return compare(b, w) ? ((getAnswer(b, w, arr) + 3) % 4) + 1 : 0;
-            });
-    }
-
-    void ActivateModule()
-    {
         Debug.LogFormat("[Bitmaps #{0}] Bitmap ({1}):", _moduleId, _colorNames[_colorIx]);
         for (int y = 0; y < 8; y++)
         {
@@ -217,47 +69,566 @@ public class BitmapsModule : MonoBehaviour
             if (y == 3)
                 Debug.LogFormat("[Bitmaps #{0}] ────────┼────────", _moduleId);
         }
-        Debug.LogFormat("[Bitmaps #{0}] Quadrant counts: {1}", _moduleId, string.Join(", ", getQuadrantCounts().Select(w => string.Format("{0}w/{1}b", w, 16 - w)).ToArray()));
+        Debug.LogFormat("[Bitmaps #{0}] Quadrant counts: {1}", _moduleId, string.Join(", ", getQuadrantCounts(_bitmap).Select(w => string.Format("{0}w/{1}b", w, 16 - w)).ToArray()));
 
-        var litIndicators = Bomb.GetOnIndicators().Count();
-        var unlitIndicators = Bomb.GetOffIndicators().Count();
-        var numBatteries = Bomb.GetBatteryCount();
-        var numPorts = Bomb.GetPortCount();
-        var firstSerialDigit = Bomb.GetSerialNumberNumbers().First();
-
-        var rules = Ut.NewArray(
-            quadrantCountRule(true),
-            quadrantMajorityRule("There are exactly as many mostly-white quadrants as there are lit indicators", "Number of batteries", (b, w) => w == litIndicators, (b, w, arr) => numBatteries),
-            rowColumnRule,
-            quadrantMajorityRule("There are fewer mostly-white quadrants than mostly-black quadrants", "Number of mostly-black quadrants", (b, w) => w < b, (b, w, arr) => b),
-            totalCountRule(36, true),
-            quadrantMajorityRule("There are more mostly-white quadrants than mostly-black quadrants", "Smallest number of black in any quadrant", (b, w) => w > b, (b, w, arr) => 16 - getQuadrantCounts().Max()),
-            quadrantCountRule(false),
-            quadrantMajorityRule("There are exactly as many mostly-black quadrants as there are unlit indicators", "Number of ports", (b, w) => b == unlitIndicators, (b, w, arr) => numPorts),
-            squareRule,
-            quadrantMajorityRule("There are exactly as many mostly-white quadrants as mostly-black quadrants", "First numeric digit of the serial number", (b, w) => w == b, (b, w, arr) => firstSerialDigit));
-
-        var startRule = Bomb.GetSerialNumberNumbers().Last();
-        Debug.LogFormat("[Bitmaps #{0}] Starting rule: {1}", _moduleId, startRule);
-
-        for (int r = 0; r < rules.Length; r++)
+        var rnd = RuleSeedable.GetRNG();
+        if (rnd.Seed == 1)
         {
-            var ruleIndex = (r + startRule) % rules.Length;
-            _triggeredRule = rules[ruleIndex];
-            _buttonToPush = _triggeredRule.GetAnswer(_bitmap);
-            if (_buttonToPush != 0)
+            _defaultRuleset = true;
+            _rules = Ut.NewArray(
+                // If exactly one quadrant has 5 or fewer white pixels, the answer is the number of white pixels in the other 3 quadrants.
+                new Rule(Condition.QuadrantPixelCount(NumberComparison.ExactlyOne, 5, orFewer: true, white: true), Solution.WhiteInOtherThreeQuadrants),
+                // If there are exactly as many mostly-white quadrants as there are lit indicators, the answer is the number of batteries.
+                new Rule(Condition.QuadrantMajorityCount(Comparison.Same, white: true, ev: EdgeworkValue.LitIndicators), EdgeworkValue.NumberOfBatteries),
+                // If exactly one row or column is completely white or completely black, the answer is its x-/y-coordinate (starting from 1 in the top/left).
+                new Rule(Condition.RowOrColumn, Solution.RowColumnCoordinate),
+                // If there are fewer mostly-white quadrants than mostly-black quadrants, the answer is the number of mostly-black quadrants.
+                new Rule(Condition.QuadrantMajorityComparison(Comparison.Fewer), Solution.NumMostlyBlackQuadrants),
+                // If the entire bitmap has 36 or more white pixels, the answer is the total number of white pixels.
+                new Rule(Condition.BitmapPixelCount(36, 64, white: true), Solution.NumWhitePixels),
+                // If there are more mostly-white quadrants than mostly-black quadrants, the answer is the smallest number of black pixels in any quadrant.
+                new Rule(Condition.QuadrantMajorityComparison(Comparison.More), Solution.MinBlackInQuadrant),
+                // If exactly one quadrant has 5 or fewer black pixels, the answer is the number of black pixels in the other 3 quadrants.
+                new Rule(Condition.QuadrantPixelCount(NumberComparison.ExactlyOne, 5, orFewer: true, white: false), Solution.BlackInOtherThreeQuadrants),
+                // If there are exactly as many mostly-black quadrants as there are unlit indicators, the answer is the number of ports.
+                new Rule(Condition.QuadrantMajorityCount(Comparison.Same, white: false, ev: EdgeworkValue.UnlitIndicators), EdgeworkValue.Ports),
+                // If there is a 3×3 square that is completely white or completely black, the answer is the x-coordinate (starting from 1) of the center of the first such square in reading order.
+                new Rule(Condition.Square3, Solution.SquareCoordinate(SquarePoint.Center, 3, y: false, last: false)),
+                // If there are exactly as many mostly-white quadrants as mostly-black quadrants, the answer is the first numeric digit of the serial number.
+                new Rule(Condition.QuadrantMajorityComparison(Comparison.Same), EdgeworkValue.SnFirstDigit));
+
+            _startRule = EdgeworkValue.SnLastDigit;
+        }
+        else
+        {
+            _defaultRuleset = false;
+
+            // Add extra randomness
+            var skip = rnd.Next(0, 100);
+            for (var i = 0; i < skip; i++)
+                rnd.NextDouble();
+
+            // Take a copy of the (static) array
+            var edgeworkVariables = rnd.ShuffleFisherYates(EdgeworkValue.Default.ToArray());
+            var edgeworkVariableIx = 0;
+
+            // Optional conditions
+            var conditions = new List<Condition>
             {
-                Debug.LogFormat("[Bitmaps #{0}] Applicable rule: {1} = {2}", _moduleId, ruleIndex, _triggeredRule.Name);
-                Debug.LogFormat("[Bitmaps #{0}] Answer: {1}", _moduleId, _triggeredRule.Action);
-                Debug.LogFormat("[Bitmaps #{0}] Button to push: {1}", _moduleId, _buttonToPush);
-                goto found;
+                Condition.RowOrColumn,
+                Condition.Row,
+                Condition.Column,
+                Condition.Square3,
+                new[] { Condition.Square2BW, Condition.Square2W, Condition.Square2B }[rnd.Next(0, 3)],
+                Condition.QuadrantMajorityCount(Comparison.Same, white: true, ev: edgeworkVariables[edgeworkVariableIx++]),
+                Condition.QuadrantMajorityCount(Comparison.More, white: true, ev: edgeworkVariables[edgeworkVariableIx++]),
+                Condition.QuadrantMajorityCount(Comparison.Fewer, white: true, ev: edgeworkVariables[edgeworkVariableIx++]),
+                Condition.QuadrantMajorityCount(Comparison.Same, white: false, ev: edgeworkVariables[edgeworkVariableIx++]),
+                Condition.QuadrantMajorityCount(Comparison.More, white: false, ev: edgeworkVariables[edgeworkVariableIx++]),
+                Condition.QuadrantMajorityCount(Comparison.Fewer, white: false, ev: edgeworkVariables[edgeworkVariableIx++])
+            };
+
+            // We will make sure that all three conditions from one of these triplets are present so that there is always one rule that matches.
+            var pixelCount1 = rnd.Next(3, 8);
+            var orFewer = rnd.Next(0, 2) == 0;
+            var whiteNotBlack = rnd.Next(0, 2) == 0;
+            var pixelCount2 = rnd.Next(26, 30);
+            var whiteNotBlack2 = rnd.Next(0, 2) == 0;
+            var tripletConditions = Ut.NewArray(
+                Ut.NewArray(
+                    Condition.QuadrantPixelCount(NumberComparison.None, pixelCount1, orFewer, whiteNotBlack),
+                    Condition.QuadrantPixelCount(NumberComparison.ExactlyOne, pixelCount1, orFewer, whiteNotBlack),
+                    Condition.QuadrantPixelCount(NumberComparison.MoreThanOne, pixelCount1, orFewer, whiteNotBlack)),
+                Ut.NewArray(
+                    Condition.QuadrantMajorityComparison(Comparison.Fewer),
+                    Condition.QuadrantMajorityComparison(Comparison.More),
+                    Condition.QuadrantMajorityComparison(Comparison.Same)),
+                Ut.NewArray(
+                    Condition.BitmapPixelCount(64 - pixelCount2, 64, whiteNotBlack2),
+                    Condition.BitmapPixelCount(0, pixelCount2, whiteNotBlack2),
+                    Condition.BitmapPixelCount(pixelCount2 + 1, 63 - pixelCount2, whiteNotBlack2)),
+                Ut.NewArray(
+                    Condition.QuadrantBalancedNone,
+                    Condition.QuadrantBalancedOne,
+                    Condition.QuadrantBalancedMoreThanOne));
+
+            var tripletIx = rnd.Next(0, tripletConditions.Length);
+            var triplet = tripletConditions[tripletIx];
+
+            for (var i = 0; i < tripletConditions.Length; i++)
+                if (i != tripletIx)
+                    for (var j = 0; j < tripletConditions[i].Length; j++)
+                        conditions.Add(tripletConditions[i][j]);
+
+            rnd.ShuffleFisherYates(conditions);
+            conditions.RemoveRange(7, conditions.Count - 7);
+            conditions.AddRange(triplet);
+            rnd.ShuffleFisherYates(conditions);
+
+            _startRule = edgeworkVariables[edgeworkVariableIx++];
+
+            var solutions = new List<Solution>
+            {
+                Solution.NumMostlyBlackQuadrants,
+                Solution.NumMostlyWhiteQuadrants,
+                Solution.NumBalancedQuadrants,
+                Solution.NumWhitePixels,
+                Solution.NumBlackPixels,
+                Solution.MinBlackInQuadrant,
+                Solution.MaxBlackInQuadrant,
+                Solution.MinWhiteInQuadrant,
+                Solution.MaxWhiteInQuadrant
+            };
+
+            for (var i = edgeworkVariableIx; i < edgeworkVariables.Length; i++)
+                solutions.Add(new Solution(edgeworkVariables[i]));
+
+            var extraSolutions = new Dictionary<Extra, List<Solution>>();
+
+            extraSolutions[Extra.Quadrant] = new List<Solution>
+            {
+                Solution.WhiteInOtherThreeQuadrants,
+                Solution.BlackInOtherThreeQuadrants,
+                new Solution("the number of white pixels in the diagonally opposite quadrant", (grid, bomb, extra) => getQuadrantCounts(grid)[3 - extra]),
+                new Solution("the number of black pixels in the diagonally opposite quadrant", (grid, bomb, extra) => 16 - getQuadrantCounts(grid)[3 - extra]),
+                new Solution("the number of white pixels in the horizontally adjacent quadrant", (grid, bomb, extra) => getQuadrantCounts(grid)[extra ^ 1]),
+                new Solution("the number of black pixels in the horizontally adjacent quadrant", (grid, bomb, extra) => 16 - getQuadrantCounts(grid)[extra ^ 1]),
+                new Solution("the number of white pixels in the vertically adjacent quadrant", (grid, bomb, extra) => getQuadrantCounts(grid)[extra ^ 2]),
+                new Solution("the number of black pixels in the vertically adjacent quadrant", (grid, bomb, extra) => 16 - getQuadrantCounts(grid)[extra ^ 2])
+            };
+            extraSolutions[Extra.Row] = new List<Solution>
+            {
+                new Solution("its y-coordinate, counting from 1 from top to bottom", (grid, bomb, extra) => extra + 1),
+                new Solution("its y-coordinate, counting from 1 from bottom to top", (grid, bomb, extra) => 8 - extra)
+            };
+            extraSolutions[Extra.Column] = new List<Solution>
+            {
+                new Solution("its x-coordinate, counting from 1 from left to right", (grid, bomb, extra) => extra + 1),
+                new Solution("its x-coordinate, counting from 1 from right to left", (grid, bomb, extra) => 8 - extra)
+            };
+            extraSolutions[Extra.Line] = new List<Solution>
+            {
+                Solution.RowColumnCoordinate,
+                new Solution("its x-/y-coordinate, counting from 1 from bottom/right to top/left", (grid, bomb, extra) => 8 - extra)
+            };
+            extraSolutions[Extra.Square3] = new List<Solution>
+            {
+                Solution.SquareCoordinate(SquarePoint.Center, 3, y: false, last: false),
+                Solution.SquareCoordinate(SquarePoint.Center, 3, y: true, last: false),
+                Solution.SquareCoordinate(SquarePoint.Center, 3, y: false, last: true),
+                Solution.SquareCoordinate(SquarePoint.Center, 3, y: true, last: true),
+                Solution.SquareCoordinate(SquarePoint.TopLeft, 3, y: false, last: false),
+                Solution.SquareCoordinate(SquarePoint.TopLeft, 3, y: true, last: false),
+                Solution.SquareCoordinate(SquarePoint.TopLeft, 3, y: false, last: true),
+                Solution.SquareCoordinate(SquarePoint.TopLeft, 3, y: true, last: true),
+                Solution.SquareCoordinate(SquarePoint.TopRight, 3, y: false, last: false),
+                Solution.SquareCoordinate(SquarePoint.TopRight, 3, y: true, last: false),
+                Solution.SquareCoordinate(SquarePoint.TopRight, 3, y: false, last: true),
+                Solution.SquareCoordinate(SquarePoint.TopRight, 3, y: true, last: true),
+                Solution.SquareCoordinate(SquarePoint.BottomLeft, 3, y: false, last: false),
+                Solution.SquareCoordinate(SquarePoint.BottomLeft, 3, y: true, last: false),
+                Solution.SquareCoordinate(SquarePoint.BottomLeft, 3, y: false, last: true),
+                Solution.SquareCoordinate(SquarePoint.BottomLeft, 3, y: true, last: true),
+                Solution.SquareCoordinate(SquarePoint.BottomRight, 3, y: false, last: false),
+                Solution.SquareCoordinate(SquarePoint.BottomRight, 3, y: true, last: false),
+                Solution.SquareCoordinate(SquarePoint.BottomRight, 3, y: false, last: true),
+                Solution.SquareCoordinate(SquarePoint.BottomRight, 3, y: true, last: true)
+            };
+            extraSolutions[Extra.Square2] = new List<Solution>
+            {
+                Solution.SquareCoordinate(SquarePoint.TopLeft, 2, y: false, last: false),
+                Solution.SquareCoordinate(SquarePoint.TopLeft, 2, y: true, last: false),
+                Solution.SquareCoordinate(SquarePoint.TopLeft, 2, y: false, last: true),
+                Solution.SquareCoordinate(SquarePoint.TopLeft, 2, y: true, last: true),
+                Solution.SquareCoordinate(SquarePoint.TopRight, 2, y: false, last: false),
+                Solution.SquareCoordinate(SquarePoint.TopRight, 2, y: true, last: false),
+                Solution.SquareCoordinate(SquarePoint.TopRight, 2, y: false, last: true),
+                Solution.SquareCoordinate(SquarePoint.TopRight, 2, y: true, last: true),
+                Solution.SquareCoordinate(SquarePoint.BottomLeft, 2, y: false, last: false),
+                Solution.SquareCoordinate(SquarePoint.BottomLeft, 2, y: true, last: false),
+                Solution.SquareCoordinate(SquarePoint.BottomLeft, 2, y: false, last: true),
+                Solution.SquareCoordinate(SquarePoint.BottomLeft, 2, y: true, last: true),
+                Solution.SquareCoordinate(SquarePoint.BottomRight, 2, y: false, last: false),
+                Solution.SquareCoordinate(SquarePoint.BottomRight, 2, y: true, last: false),
+                Solution.SquareCoordinate(SquarePoint.BottomRight, 2, y: false, last: true),
+                Solution.SquareCoordinate(SquarePoint.BottomRight, 2, y: true, last: true)
+            };
+
+            _rules = new Rule[10];
+            for (int i = 0; i < 10; i++)
+            {
+                var numSol = solutions.Count;
+                if (extraSolutions.ContainsKey(conditions[i].Extra))
+                    numSol += extraSolutions[conditions[i].Extra].Count;
+                var ix = rnd.Next(0, numSol);
+                if (ix < solutions.Count)
+                {
+                    _rules[i] = new Rule(conditions[i], solutions[ix]);
+                    solutions.RemoveAt(ix);
+                }
+                else
+                {
+                    ix -= solutions.Count;
+                    _rules[i] = new Rule(conditions[i], extraSolutions[conditions[i].Extra][ix]);
+                    extraSolutions[conditions[i].Extra].RemoveAt(ix);
+                }
+            }
+            Debug.LogFormat("[Bitmaps #{0}] SOLUTION AT START (may change if solution depends on number of solved modules):", _moduleId);
+        }
+
+        // Evaluate the answer just to log it.
+        findAnswer(log: true);
+    }
+
+    private int findAnswer(bool log)
+    {
+        var startRuleIx = _startRule.GetValue(Bomb);
+        if (log)
+            Debug.LogFormat("[Bitmaps #{0}] Starting rule: {1} = {2}", _moduleId, _startRule.Name, startRuleIx);
+
+        for (int r = 0; r < _rules.Length; r++)
+        {
+            var ruleIndex = (r + startRuleIx) % _rules.Length;
+            var result = _rules[ruleIndex].Condition.Evaluate(_bitmap, Bomb);
+            if (result != null)
+            {
+                var answer = _rules[ruleIndex].Solution.Answer(_bitmap, Bomb, result.Value);
+                var btn = (answer + 3) % 4 + 1;
+                if (log)
+                {
+                    Debug.LogFormat("[Bitmaps #{0}] Applicable rule: {1} = {2}", _moduleId, ruleIndex, _rules[ruleIndex].Condition.Name);
+                    Debug.LogFormat("[Bitmaps #{0}] Answer: {1} = {2}", _moduleId, _rules[ruleIndex].Solution.Name, answer);
+                    Debug.LogFormat("[Bitmaps #{0}] Button to push: {1}", _moduleId, btn);
+                }
+                return btn;
             }
         }
 
-        Debug.LogFormat("[Bitmaps #{0}] No applicable rule found. This should never happen.", _moduleId);
-        _buttonToPush = 1;
+        Debug.LogFormat("[Bitmaps #{0}] There is a bug in the module. Please contact the author Timwi#0551 on Discord.", _moduleId);
+        return 1;
+    }
 
-        found:;
+    private void PushButton(int btn)
+    {
+        Buttons[btn - 1].AddInteractionPunch();
+        Audio.PlayGameSoundAtTransform(KMSoundOverride.SoundEffect.ButtonPress, Buttons[btn - 1].transform);
+
+        if (_isSolved)
+            return;
+
+        // Evaluate the rules again in case they depend on the number of solved modules or the countdown timer.
+        if (!_defaultRuleset)
+            Debug.LogFormat("[Bitmaps #{0}] You pressed {1} when there were {2} solved modules and the countdown timer was {3:00}:{4:00}.", _moduleId, btn, Bomb.GetSolvedModuleNames().Count, (int) Bomb.GetTime() / 60, (int) Bomb.GetTime() % 60);
+        var answer = findAnswer(log: !_defaultRuleset);
+
+        if (answer == btn)
+        {
+            Debug.LogFormat("[Bitmaps #{0}] You pushed the correct button. Module solved.", _moduleId);
+            Module.HandlePass();
+            Bitmap.gameObject.SetActive(false);
+            _isSolved = true;
+        }
+        else
+        {
+            Debug.LogFormat("[Bitmaps #{0}] You pushed {1}. Wrong button. Strike.", _moduleId, btn);
+            Module.HandleStrike();
+        }
+    }
+
+    enum Extra
+    {
+        None,
+        Quadrant,
+        Line,
+        Row,
+        Column,
+        Square2,
+        Square3
+    }
+
+    enum Comparison
+    {
+        Same,
+        More,
+        Fewer
+    }
+
+    enum NumberComparison
+    {
+        None,
+        ExactlyOne,
+        MoreThanOne
+    }
+
+    enum SquarePoint
+    {
+        TopLeft,
+        TopRight,
+        BottomLeft,
+        BottomRight,
+        Center
+    }
+
+    sealed class EdgeworkValue
+    {
+        public string Name { get; private set; }
+        public Func<KMBombInfo, int> GetValue { get; private set; }
+        public EdgeworkValue(string name, Func<KMBombInfo, int> getValue)
+        {
+            Name = name;
+            GetValue = getValue;
+        }
+
+        public static readonly EdgeworkValue LitIndicators = new EdgeworkValue("the number of lit indicators", b => b.GetOnIndicators().Count());
+        public static readonly EdgeworkValue UnlitIndicators = new EdgeworkValue("the number of unlit indicators", b => b.GetOffIndicators().Count());
+        public static readonly EdgeworkValue Ports = new EdgeworkValue("the number of ports", b => b.GetPortCount());
+        public static readonly EdgeworkValue NumberOfBatteries = new EdgeworkValue("the number of batteries", b => b.GetBatteryCount());
+        public static readonly EdgeworkValue SnFirstDigit = new EdgeworkValue("the first numeric digit of the serial number", b => b.GetSerialNumberNumbers().First());
+        public static readonly EdgeworkValue SnLastDigit = new EdgeworkValue("the last numeric digit of the serial number", b => b.GetSerialNumberNumbers().Last());
+
+        public static EdgeworkValue[] Default = Ut.NewArray(
+            new EdgeworkValue("the number of indicators", b => b.GetIndicators().Count()),
+            LitIndicators,
+            UnlitIndicators,
+            new EdgeworkValue("the number of indicators with a vowel", b => b.GetIndicators().Count(ind => ind.Any(ch => "AEIOU".Contains(ch)))),
+            new EdgeworkValue("the number of indicators with no vowel", b => b.GetIndicators().Count(ind => !ind.Any(ch => "AEIOU".Contains(ch)))),
+            Ports,
+            new EdgeworkValue("the number of port plates", b => b.GetPortPlateCount()),
+            new EdgeworkValue("the number of non-empty port plates", b => b.GetPortPlates().Count(pp => pp.Length > 0)),
+            new EdgeworkValue("the number of port types", b => b.GetPorts().Distinct().Count()),
+            new EdgeworkValue("the number of port types the bomb has exactly one port of", b => b.GetPorts().GroupBy(p => p).Where(gr => gr.Count() == 1).Count()),
+            new EdgeworkValue("the number of duplicate port types", b => b.GetPorts().GroupBy(p => p).Where(gr => gr.Count() > 1).Count()),
+            NumberOfBatteries,
+            new EdgeworkValue("the number of battery holders", b => b.GetBatteryHolderCount()),
+            new EdgeworkValue("the number of AA batteries", b => b.GetBatteryCount(Battery.AA) + b.GetBatteryCount(Battery.AAx3) + b.GetBatteryCount(Battery.AAx4)),
+            new EdgeworkValue("the number of D batteries", b => b.GetBatteryCount(Battery.D)),
+            new EdgeworkValue("the number of letters in the serial number", b => b.GetSerialNumberLetters().Count()),
+            new EdgeworkValue("the number of consonants in the serial number", b => b.GetSerialNumberLetters().Count(ch => !"AEIOU".Contains(ch))),
+            new EdgeworkValue("the number of vowels in the serial number", b => b.GetSerialNumberLetters().Count(ch => "AEIOU".Contains(ch))),
+            new EdgeworkValue("the number of digits in the serial number", b => b.GetSerialNumberNumbers().Count()),
+            new EdgeworkValue("the number of odd digits in the serial number", b => b.GetSerialNumberNumbers().Count(n => n % 2 == 1)),
+            new EdgeworkValue("the number of even digits in the serial number", b => b.GetSerialNumberNumbers().Count(n => n % 2 == 0)),
+            new EdgeworkValue("the number of modules on the bomb (including needies)", b => b.GetModuleNames().Count),
+            new EdgeworkValue("the number of non-needy modules on the bomb", b => b.GetSolvableModuleNames().Count),
+            new EdgeworkValue("the number of solved modules on the bomb", b => b.GetSolvedModuleNames().Count),
+            new EdgeworkValue("the number of unsolved non-needy modules on the bomb", b => b.GetSolvableModuleNames().Count - b.GetSolvedModuleNames().Count),
+            SnFirstDigit,
+            new EdgeworkValue("the second-last numeric digit of the serial number", b => { var arr = b.GetSerialNumberNumbers().ToArray(); return arr[arr.Length - 2]; }),
+            SnLastDigit,
+            new EdgeworkValue("the sum of the digits in the serial number", b => b.GetSerialNumberNumbers().Sum()),
+            new EdgeworkValue("the ones digit of the seconds in the countdown timer", b => ((int) b.GetTime()) % 10),
+            new EdgeworkValue("the tens digit of the seconds in the countdown timer", b => ((int) b.GetTime() / 10) % 10),
+            new EdgeworkValue("the ones digit of the minutes in the countdown timer", b => ((int) b.GetTime() / 60) % 10),
+            new EdgeworkValue("the tens digit of the minutes in the countdown timer", b => ((int) b.GetTime() / 600) % 10));
+    }
+
+    sealed class Condition
+    {
+        public string Name { get; private set; }
+        public Extra Extra { get; private set; }
+
+        // Returns null if the condition doesn’t apply, otherwise returns the Extra value
+        public Func<bool[][], KMBombInfo, int?> Evaluate { get; private set; }
+
+        public Condition(string name, Extra extra, Func<bool[][], KMBombInfo, int?> evaluate) { Name = name; Extra = extra; Evaluate = evaluate; }
+        public Condition(string name, Extra extra, Func<bool[][], KMBombInfo, bool> evaluate) { Name = name; Extra = extra; Evaluate = (grid, bomb) => { var result = evaluate(grid, bomb); return result ? 0 : (int?) null; }; }
+
+        public static readonly Condition RowOrColumn = new Condition("If exactly one row or column is completely white or completely black", Extra.Line, colRow(true, true));
+        public static readonly Condition Row = new Condition("If exactly one row is completely white or completely black", Extra.Row, colRow(false, true));
+        public static readonly Condition Column = new Condition("If exactly one column is completely white or completely black", Extra.Column, colRow(true, false));
+        public static readonly Condition Square3 = new Condition("If there is a 3×3 square that is completely white or completely black", Extra.Square3, findSquare(3, true, true));
+        public static readonly Condition Square2BW = new Condition("If there is a 2×2 square that is completely white or completely black", Extra.Square2, findSquare(2, true, true));
+        public static readonly Condition Square2W = new Condition("If there is a 2×2 square that is completely white", Extra.Square2, findSquare(2, true, false));
+        public static readonly Condition Square2B = new Condition("If there is a 2×2 square that is completely black", Extra.Square2, findSquare(2, false, true));
+        public static readonly Condition QuadrantBalancedNone = new Condition("If no quadrant has 8 white and 8 black pixels", Extra.None, (grid, bomb) => getQuadrantCounts(grid).Count(q => q == 8) == 0);
+        public static readonly Condition QuadrantBalancedOne = new Condition("If there is exactly one quadrant with 8 white and 8 black pixels", Extra.Quadrant, (grid, bomb) => getQuadrantCounts(grid).Count(q => q == 8) == 1 ? getQuadrantCounts(grid).IndexOf(q => q == 8) : (int?) null);
+        public static readonly Condition QuadrantBalancedMoreThanOne = new Condition("If there is more than one quadrant with 8 white and 8 black pixels", Extra.None, (grid, bomb) => getQuadrantCounts(grid).Count(q => q == 8) > 1);
+        public static Condition QuadrantMajorityCount(Comparison comparison, bool white, EdgeworkValue ev)
+        {
+            return new Condition(
+                string.Format("If there are {0} mostly-{1} quadrants {2} {3}", comparison == Comparison.Same ? "exactly as many" : comparison == Comparison.Fewer ? "fewer" : "more", white ? "white" : "black", comparison == Comparison.Same ? "as" : "than", ev.Name),
+                Extra.None,
+                (grid, bomb) =>
+                {
+                    var quadrants = getQuadrantCounts(grid);
+                    var numMajQuadrants = quadrants.Count(q => white ? (q > 8) : (q < 8));
+                    return
+                        comparison == Comparison.Same ? (numMajQuadrants == ev.GetValue(bomb)) :
+                        comparison == Comparison.More ? (numMajQuadrants > ev.GetValue(bomb)) : (numMajQuadrants < ev.GetValue(bomb));
+                });
+        }
+        public static Condition QuadrantPixelCount(NumberComparison cmp, int amount, bool orFewer, bool white)
+        {
+            return new Condition(
+                string.Format("If {0} quadrant has {1} {2} {3} pixels",
+                    cmp == NumberComparison.None ? "no" : cmp == NumberComparison.ExactlyOne ? "exactly one" : "more than one",
+                    amount, orFewer ? "or fewer" : "or more", white ? "white" : "black"),
+                cmp == NumberComparison.ExactlyOne ? Extra.Quadrant : Extra.None,
+                (grid, bomb) =>
+                {
+                    var matchingQuadrants = getQuadrantCounts(grid).Select(q => white ? (orFewer ? (q <= amount) : (q >= amount)) : (orFewer ? (16 - q <= amount) : (16 - q >= amount))).ToArray();
+                    var count = matchingQuadrants.Count(q => q);
+                    return cmp == NumberComparison.ExactlyOne
+                        ? (count == 1 ? matchingQuadrants.IndexOf(q => q) : (int?) null)
+                        : (cmp == NumberComparison.None ? (count == 0) : (count > 1)) ? 0 : (int?) null;
+                });
+        }
+        public static Condition QuadrantMajorityComparison(Comparison cmp)
+        {
+            return new Condition(
+                string.Format("If there are {0} mostly-white quadrants {1} mostly-black quadrants",
+                    cmp == Comparison.Fewer ? "fewer" : cmp == Comparison.More ? "more" : "exactly as many",
+                    cmp == Comparison.Same ? "as" : "than"),
+                Extra.None,
+                (grid, bomb) =>
+                {
+                    var quadrants = getQuadrantCounts(grid);
+                    var majWhite = quadrants.Count(q => q > 8);
+                    var majBlack = quadrants.Count(q => q < 8);
+                    return
+                        cmp == Comparison.Fewer ? (majWhite < majBlack) :
+                        cmp == Comparison.More ? (majWhite > majBlack) : (majWhite == majBlack);
+                });
+        }
+        public static Condition BitmapPixelCount(int minAmount, int maxAmount, bool white)
+        {
+            return new Condition(
+                string.Format(minAmount == 0 ? "If the entire bitmap has {1} or fewer pixels" : maxAmount == 64 ? "If the entire bitmap has {0} or more pixels" : "If the entire bitmap has between {0} and {1} pixels", minAmount, maxAmount),
+                Extra.None,
+                (grid, bomb) =>
+                {
+                    var pixels = grid.Sum(row => row.Count(w => w));
+                    if (!white)
+                        pixels = 64 - pixels;
+                    return minAmount <= pixels && pixels <= maxAmount;
+                });
+        }
+
+        private static Func<bool[][], KMBombInfo, int?> findSquare(int sz, bool checkWhite, bool checkBlack)
+        {
+            return (grid, bomb) =>
+            {
+                int? firstInReadingOrder = null;
+                int lastInReadingOrder = 0;
+                for (int y = 0; y <= 8 - sz; y++)
+                    for (int x = 0; x <= 8 - sz; x++)
+                    {
+                        var isWhite = grid[x][y];
+                        if ((isWhite && !checkWhite) || (!isWhite && !checkBlack))
+                            continue;
+                        for (int xx = 0; xx < sz; xx++)
+                            for (int yy = 0; yy < sz; yy++)
+                                if (grid[x + xx][y + yy] != isWhite)
+                                    goto next;
+                        if (firstInReadingOrder == null)
+                            firstInReadingOrder = x + 8 * y;
+                        lastInReadingOrder = x + 8 * y;
+                        next:;
+                    }
+
+                // Encode both coordinates in a single integer
+                return firstInReadingOrder != null ? firstInReadingOrder.Value * 64 + lastInReadingOrder : (int?) null;
+            };
+        }
+
+        private static Func<bool[][], KMBombInfo, int?> colRow(bool checkCols, bool checkRows)
+        {
+            return (grid, bomb) =>
+            {
+                int? coord = null;
+                if (checkCols)
+                {
+                    for (int x = 0; x < 8; x++)
+                    {
+                        var isWhite = grid[x][0];
+                        for (int y = 1; y < 8; y++)
+                            if (grid[x][y] != isWhite)
+                                goto next;
+
+                        if (coord != null)
+                            // There is more than one such column.
+                            return null;
+
+                        coord = x;
+                        next:;
+                    }
+                }
+                if (checkRows)
+                {
+                    for (int y = 0; y < 8; y++)
+                    {
+                        var isWhite = grid[0][y];
+                        for (int x = 1; x < 8; x++)
+                            if (grid[x][y] != isWhite)
+                                goto next;
+
+                        if (coord != null)
+                            // There is more than one such column or row.
+                            return null;
+
+                        coord = y;
+                        next:;
+                    }
+                }
+                return coord;
+            };
+        }
+    }
+
+    sealed class Solution
+    {
+        public string Name { get; private set; }
+        public Func<bool[][], KMBombInfo, int, int> Answer { get; private set; }
+        public Solution(string name, Func<bool[][], KMBombInfo, int, int> answer) { Name = name; Answer = answer; }
+        public Solution(EdgeworkValue ev) { Name = ev.Name; Answer = (grid, bomb, extra) => ev.GetValue(bomb); }
+
+        public static readonly Solution WhiteInOtherThreeQuadrants = new Solution("the number of white pixels in the other three quadrants", (grid, bomb, extra) => getQuadrantCounts(grid).Select((q, ix) => ix == extra ? 0 : q).Sum());
+        public static readonly Solution BlackInOtherThreeQuadrants = new Solution("the number of black pixels in the other three quadrants", (grid, bomb, extra) => getQuadrantCounts(grid).Select((q, ix) => ix == extra ? 0 : 16 - q).Sum());
+        public static readonly Solution RowColumnCoordinate = new Solution("its x-/y-coordinate (starting from 1 in the top/left)", (grid, bomb, extra) => extra + 1);
+        public static readonly Solution NumMostlyWhiteQuadrants = new Solution("the number of mostly-white quadrants", (grid, bomb, extra) => getQuadrantCounts(grid).Count(q => q > 8));
+        public static readonly Solution NumMostlyBlackQuadrants = new Solution("the number of mostly-black quadrants", (grid, bomb, extra) => getQuadrantCounts(grid).Count(q => q < 8));
+        public static readonly Solution NumBalancedQuadrants = new Solution("the number of quadrants with 8 white and 8 black pixels", (grid, bomb, extra) => getQuadrantCounts(grid).Count(q => q == 8));
+        public static readonly Solution NumWhitePixels = new Solution("the total number of white pixels", (grid, bomb, extra) => grid.Sum(row => row.Count(p => p)));
+        public static readonly Solution NumBlackPixels = new Solution("the total number of black pixels", (grid, bomb, extra) => grid.Sum(row => row.Count(p => !p)));
+        public static readonly Solution MinWhiteInQuadrant = new Solution("the smallest number of white pixels in any quadrant", (grid, bomb, extra) => getQuadrantCounts(grid).Min());
+        public static readonly Solution MinBlackInQuadrant = new Solution("the smallest number of black pixels in any quadrant", (grid, bomb, extra) => 16 - getQuadrantCounts(grid).Max());
+        public static readonly Solution MaxWhiteInQuadrant = new Solution("the largest number of white pixels in any quadrant", (grid, bomb, extra) => getQuadrantCounts(grid).Max());
+        public static readonly Solution MaxBlackInQuadrant = new Solution("the largest number of black pixels in any quadrant", (grid, bomb, extra) => 16 - getQuadrantCounts(grid).Min());
+
+        public static Solution SquareCoordinate(SquarePoint pt, int sz, bool y, bool last)
+        {
+            return new Solution(
+                string.Format("the {0}-coordinate (starting from 1) of the {1} of the {2} such square in reading order",
+                    y ? "y" : "x",
+                    pt == SquarePoint.BottomLeft ? "bottom-left corner" :
+                    pt == SquarePoint.BottomRight ? "bottom-right corner" :
+                    pt == SquarePoint.TopLeft ? "top-left corner" :
+                    pt == SquarePoint.TopRight ? "top-right corner" : "center",
+                    last ? "last" : "first"),
+                (grid, bomb, extra) => (y ? (last ? extra % 64 : extra / 64) / 8 : (last ? extra % 64 : extra / 64) % 8) + (
+                    // +1 on everything because the answer 1-based, while “extra” is 0-based.
+                    y && (pt == SquarePoint.BottomLeft || pt == SquarePoint.BottomRight) ? sz :
+                    !y && (pt == SquarePoint.TopRight || pt == SquarePoint.BottomRight) ? sz :
+                    pt == SquarePoint.Center ? 2 : 1));
+        }
+    }
+
+    sealed class Rule
+    {
+        public Condition Condition { get; private set; }
+        public Solution Solution { get; private set; }
+        public Rule(Condition condition, Solution solution) { Condition = condition; Solution = solution; }
+        public Rule(Condition condition, EdgeworkValue ev) { Condition = condition; Solution = new Solution(ev); }
+    }
+
+    private static int[] getQuadrantCounts(bool[][] grid)
+    {
+        var qCounts = new int[4];
+        for (int x = 0; x < 8; x++)
+            for (int y = 0; y < 8; y++)
+                if (grid[x][y])
+                    qCounts[(y / 4) * 2 + (x / 4)]++;
+        return qCounts;
     }
 
     private Texture generateTexture()
@@ -328,7 +699,7 @@ public class BitmapsModule : MonoBehaviour
     }
 
 #pragma warning disable 414
-    private string TwitchHelpMessage = @"Submit the correct answer with “!{0} press 2”.";
+    private readonly string TwitchHelpMessage = @"!{0} press 2 [press button 2]";
 #pragma warning restore 414
 
     KMSelectable[] ProcessTwitchCommand(string command)

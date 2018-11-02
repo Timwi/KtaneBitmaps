@@ -175,8 +175,8 @@ public class BitmapsModule : MonoBehaviour
         "x-coordinate of center of first in reading order",
         arr =>
         {
-            for (int x = 1; x < 7; x++)
-                for (int y = 1; y < 7; y++)
+            for (int y = 1; y < 7; y++)
+                for (int x = 1; x < 7; x++)
                 {
                     var isWhite = arr[x][y];
                     for (int xx = -1; xx < 2; xx++)

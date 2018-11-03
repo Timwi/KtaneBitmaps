@@ -136,9 +136,9 @@ public class BitmapsModule : MonoBehaviour
             var whiteNotBlack2 = rnd.Next(0, 2) == 0;
             var tripletConditions = Ut.NewArray(
                 Ut.NewArray(
-                    Condition.QuadrantPixelCount(NumberComparison.None, pixelCount1, orFewer, whiteNotBlack),
-                    Condition.QuadrantPixelCount(NumberComparison.ExactlyOne, pixelCount1, orFewer, whiteNotBlack),
-                    Condition.QuadrantPixelCount(NumberComparison.MoreThanOne, pixelCount1, orFewer, whiteNotBlack)),
+                    Condition.QuadrantPixelCount(NumberComparison.None, orFewer ? pixelCount1 : 16 - pixelCount1, orFewer, whiteNotBlack),
+                    Condition.QuadrantPixelCount(NumberComparison.ExactlyOne, orFewer ? pixelCount1 : 16 - pixelCount1, orFewer, whiteNotBlack),
+                    Condition.QuadrantPixelCount(NumberComparison.MoreThanOne, orFewer ? pixelCount1 : 16 - pixelCount1, orFewer, whiteNotBlack)),
                 Ut.NewArray(
                     Condition.QuadrantMajorityComparison(Comparison.Fewer),
                     Condition.QuadrantMajorityComparison(Comparison.More),
@@ -273,6 +273,9 @@ public class BitmapsModule : MonoBehaviour
                     extraSolutions[conditions[i].Extra].RemoveAt(ix);
                 }
             }
+            Debug.LogFormat("<Bitmaps #{0}> RULES:", _moduleId);
+            for (int i = 0; i < 10; i++)
+                Debug.LogFormat("<Bitmaps #{0}> {1}, the answer is {2}.", _moduleId, _rules[i].Condition.Name, _rules[i].Solution.Name);
             Debug.LogFormat("[Bitmaps #{0}] SOLUTION AT START (may change if solution depends on number of solved modules):", _moduleId);
         }
 
@@ -493,7 +496,7 @@ public class BitmapsModule : MonoBehaviour
         public static Condition BitmapPixelCount(int minAmount, int maxAmount, bool white)
         {
             return new Condition(
-                string.Format(minAmount == 0 ? "If the entire bitmap has {1} or fewer pixels" : maxAmount == 64 ? "If the entire bitmap has {0} or more pixels" : "If the entire bitmap has between {0} and {1} pixels", minAmount, maxAmount),
+                string.Format(minAmount == 0 ? "If the entire bitmap has {1} or fewer {2} pixels" : maxAmount == 64 ? "If the entire bitmap has {0} or more {2} pixels" : "If the entire bitmap has between {0} and {1} {2} pixels", minAmount, maxAmount, white ? "white" : "black"),
                 Extra.None,
                 (grid, bomb) =>
                 {

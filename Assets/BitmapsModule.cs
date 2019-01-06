@@ -72,6 +72,7 @@ public class BitmapsModule : MonoBehaviour
         Debug.LogFormat("[Bitmaps #{0}] Quadrant counts: {1}", _moduleId, string.Join(", ", getQuadrantCounts(_bitmap).Select(w => string.Format("{0}w/{1}b", w, 16 - w)).ToArray()));
 
         var rnd = RuleSeedable.GetRNG();
+        Debug.LogFormat("[Bitmaps #{0}] Using rule seed: {1}", _moduleId, rnd.Seed);
         if (rnd.Seed == 1)
         {
             _defaultRuleset = true;

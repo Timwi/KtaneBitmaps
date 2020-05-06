@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 using Bitmaps;
@@ -331,6 +332,7 @@ public class BitmapsModule : MonoBehaviour
             Module.HandlePass();
             Bitmap.gameObject.SetActive(false);
             _isSolved = true;
+            Audio.PlayGameSoundAtTransform(KMSoundOverride.SoundEffect.CorrectChime, transform);
         }
         else
         {
@@ -716,5 +718,11 @@ public class BitmapsModule : MonoBehaviour
             case "press 4": return new[] { Buttons[3] };
         }
         return null;
+    }
+
+    IEnumerator TwitchHandleForcedSolve()
+    {
+        Buttons[findAnswer(false) - 1].OnInteract();
+        yield break;
     }
 }

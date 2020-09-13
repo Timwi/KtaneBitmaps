@@ -37,13 +37,11 @@ public class BitmapsModule : MonoBehaviour
     private static readonly Color[] _darkColors = new[] { new Color(.75f, .5f, .5f), new Color(.5f, .75f, .5f), new Color(.5f, .5f, .75f), new Color(.75f, .75f, .5f), new Color(.5f, .75f, .75f), new Color(.75f, .5f, .75f) };
     private static readonly string[] _colorNames = new[] { "red", "green", "blue", "yellow", "cyan", "pink" };
 
-    private static int _colorIxCounter = -1;
     private int _colorIx;
 
     void Start()
     {
-        _colorIxCounter = _colorIxCounter == -1 ? Rnd.Range(0, _lightColors.Length) : (_colorIxCounter + 1) % _lightColors.Length;
-        _colorIx = _colorIxCounter;
+        _colorIx = Rnd.Range(0, _lightColors.Length);
 
         _moduleId = _moduleIdCounter++;
         Buttons[0].OnInteract += delegate { PushButton(1); return false; };

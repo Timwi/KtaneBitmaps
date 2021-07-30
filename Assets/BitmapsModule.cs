@@ -710,10 +710,10 @@ public class BitmapsModule : MonoBehaviour
     {
         switch (command.Trim().Replace("  ", " ").ToLowerInvariant())
         {
-            case "press 1": return new[] { Buttons[0] };
-            case "press 2": return new[] { Buttons[1] };
-            case "press 3": return new[] { Buttons[2] };
-            case "press 4": return new[] { Buttons[3] };
+            case "press 1": case "1": return new[] { Buttons[0] };
+            case "press 2": case "2": return new[] { Buttons[1] };
+            case "press 3": case "3": return new[] { Buttons[2] };
+            case "press 4": case "4": return new[] { Buttons[3] };
         }
         return null;
     }

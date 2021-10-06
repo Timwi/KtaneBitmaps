@@ -37,24 +37,51 @@ public class BitmapsModule : MonoBehaviour
     private static readonly Color[] _darkColors = new[] { new Color(.75f, .5f, .5f), new Color(.5f, .75f, .5f), new Color(.5f, .5f, .75f), new Color(.75f, .75f, .5f), new Color(.5f, .75f, .75f), new Color(.75f, .5f, .75f) };
     private static readonly string[] _colorNames = new[] { "red", "green", "blue", "yellow", "cyan", "pink" };
 
+    private static readonly string[] _images =
+    {
+        "░░░░██░░██░░░██░██░░░░██░░░░░░░█░░░░░░░███░░░░████░░░██░░░░░██░░",
+        "░░░██░░█░░███░█░░██░██░██████░█░█████░█░░██░██░█░░███░█░░░░██░░█",
+        "░░███░░░░█████░░██░░██████░░███░███████████████░██░░████░█░░██░░",
+        "░░██████░██████░██░░███████████░███████░██░░████░██████░░░██████",
+        "░█░███░░██░░███░██░░█░████░███░███░███░███░░█░████░░███░░█░███░░"
+    };
+    //The images are rotated 90 degrees counterclockwise so they show up properly on the module. Feel free to add more.
+
     private int _colorIx;
+    private bool _isAprilFools;
 
     void Start()
     {
         _colorIx = Rnd.Range(0, _lightColors.Length);
 
         _moduleId = _moduleIdCounter++;
+        string day = DateTime.Now.ToString("MM/dd");
+        _isAprilFools = day == "10/06";
+
         Buttons[0].OnInteract += delegate { PushButton(1); return false; };
         Buttons[1].OnInteract += delegate { PushButton(2); return false; };
         Buttons[2].OnInteract += delegate { PushButton(3); return false; };
         Buttons[3].OnInteract += delegate { PushButton(4); return false; };
 
         _bitmap = new bool[8][];
-        for (int j = 0; j < 8; j++)
+        if (!_isAprilFools)
         {
-            _bitmap[j] = new bool[8];
-            for (int i = 0; i < 8; i++)
-                _bitmap[j][i] = Rnd.Range(0, 2) == 0;
+            for (int j = 0; j < 8; j++)
+            {
+                _bitmap[j] = new bool[8];
+                for (int i = 0; i < 8; i++)
+                    _bitmap[j][i] = Rnd.Range(0, 2) == 0;
+            }
+        }
+        else
+        { 
+            int rand = Rnd.Range(0, _images.Length);
+            for (int j = 0; j < 8; j++)
+            {
+                _bitmap[j] = new bool[8];
+                for (int i = 0; i < 8; i++)
+                    _bitmap[j][i] = _images[rand].Substring(j * 8 + i, 1) == "█" ? true : false;
+            }
         }
         _isSolved = false;
 
@@ -321,7 +348,7 @@ public class BitmapsModule : MonoBehaviour
 
         // Evaluate the rules again in case they depend on the number of solved modules or the countdown timer.
         if (!_defaultRuleset)
-            Debug.LogFormat("[Bitmaps #{0}] You pressed {1} when there were {2} solved modules and the countdown timer was {3:00}:{4:00}.", _moduleId, btn, Bomb.GetSolvedModuleNames().Count, (int) Bomb.GetTime() / 60, (int) Bomb.GetTime() % 60);
+            Debug.LogFormat("[Bitmaps #{0}] You pressed {1} when there were {2} solved modules and the countdown timer was {3:00}:{4:00}.", _moduleId, btn, Bomb.GetSolvedModuleNames().Count, (int)Bomb.GetTime() / 60, (int)Bomb.GetTime() % 60);
         var answer = findAnswer(log: !_defaultRuleset);
 
         if (answer == btn)
@@ -420,10 +447,10 @@ public class BitmapsModule : MonoBehaviour
             new EdgeworkValue("the second-last numeric digit of the serial number", b => { var arr = b.GetSerialNumberNumbers().ToArray(); return arr[arr.Length - 2]; }),
             SnLastDigit,
             new EdgeworkValue("the sum of the digits in the serial number", b => b.GetSerialNumberNumbers().Sum()),
-            new EdgeworkValue("the ones digit of the seconds in the countdown timer", b => ((int) b.GetTime()) % 10),
-            new EdgeworkValue("the tens digit of the seconds in the countdown timer", b => ((int) b.GetTime() / 10) % 10),
-            new EdgeworkValue("the ones digit of the minutes in the countdown timer", b => ((int) b.GetTime() / 60) % 10),
-            new EdgeworkValue("the tens digit of the minutes in the countdown timer", b => ((int) b.GetTime() / 600) % 10));
+            new EdgeworkValue("the ones digit of the seconds in the countdown timer", b => ((int)b.GetTime()) % 10),
+            new EdgeworkValue("the tens digit of the seconds in the countdown timer", b => ((int)b.GetTime() / 10) % 10),
+            new EdgeworkValue("the ones digit of the minutes in the countdown timer", b => ((int)b.GetTime() / 60) % 10),
+            new EdgeworkValue("the tens digit of the minutes in the countdown timer", b => ((int)b.GetTime() / 600) % 10));
     }
 
     sealed class Condition
@@ -435,7 +462,7 @@ public class BitmapsModule : MonoBehaviour
         public Func<bool[][], KMBombInfo, int?> Evaluate { get; private set; }
 
         public Condition(string name, Extra extra, Func<bool[][], KMBombInfo, int?> evaluate) { Name = name; Extra = extra; Evaluate = evaluate; }
-        public Condition(string name, Extra extra, Func<bool[][], KMBombInfo, bool> evaluate) { Name = name; Extra = extra; Evaluate = (grid, bomb) => { var result = evaluate(grid, bomb); return result ? 0 : (int?) null; }; }
+        public Condition(string name, Extra extra, Func<bool[][], KMBombInfo, bool> evaluate) { Name = name; Extra = extra; Evaluate = (grid, bomb) => { var result = evaluate(grid, bomb); return result ? 0 : (int?)null; }; }
 
         public static readonly Condition RowOrColumn = new Condition("If exactly one row or column is completely white or completely black", Extra.Line, colRow(true, true));
         public static readonly Condition Row = new Condition("If exactly one row is completely white or completely black", Extra.Row, colRow(false, true));
@@ -445,7 +472,7 @@ public class BitmapsModule : MonoBehaviour
         public static readonly Condition Square2W = new Condition("If there is a 2×2 square that is completely white", Extra.Square2, findSquare(2, true, false));
         public static readonly Condition Square2B = new Condition("If there is a 2×2 square that is completely black", Extra.Square2, findSquare(2, false, true));
         public static readonly Condition QuadrantBalancedNone = new Condition("If no quadrant has 8 white and 8 black pixels", Extra.None, (grid, bomb) => getQuadrantCounts(grid).Count(q => q == 8) == 0);
-        public static readonly Condition QuadrantBalancedOne = new Condition("If there is exactly one quadrant with 8 white and 8 black pixels", Extra.Quadrant, (grid, bomb) => getQuadrantCounts(grid).Count(q => q == 8) == 1 ? getQuadrantCounts(grid).IndexOf(q => q == 8) : (int?) null);
+        public static readonly Condition QuadrantBalancedOne = new Condition("If there is exactly one quadrant with 8 white and 8 black pixels", Extra.Quadrant, (grid, bomb) => getQuadrantCounts(grid).Count(q => q == 8) == 1 ? getQuadrantCounts(grid).IndexOf(q => q == 8) : (int?)null);
         public static readonly Condition QuadrantBalancedMoreThanOne = new Condition("If there is more than one quadrant with 8 white and 8 black pixels", Extra.None, (grid, bomb) => getQuadrantCounts(grid).Count(q => q == 8) > 1);
         public static Condition QuadrantMajorityCount(Comparison comparison, bool white, EdgeworkValue ev)
         {
@@ -473,8 +500,8 @@ public class BitmapsModule : MonoBehaviour
                     var matchingQuadrants = getQuadrantCounts(grid).Select(q => white ? (orFewer ? (q <= amount) : (q >= amount)) : (orFewer ? (16 - q <= amount) : (16 - q >= amount))).ToArray();
                     var count = matchingQuadrants.Count(q => q);
                     return cmp == NumberComparison.ExactlyOne
-                        ? (count == 1 ? matchingQuadrants.IndexOf(q => q) : (int?) null)
-                        : (cmp == NumberComparison.None ? (count == 0) : (count > 1)) ? 0 : (int?) null;
+                        ? (count == 1 ? matchingQuadrants.IndexOf(q => q) : (int?)null)
+                        : (cmp == NumberComparison.None ? (count == 0) : (count > 1)) ? 0 : (int?)null;
                 });
         }
         public static Condition QuadrantMajorityComparison(Comparison cmp)
@@ -527,11 +554,11 @@ public class BitmapsModule : MonoBehaviour
                         if (firstInReadingOrder == null)
                             firstInReadingOrder = x + 8 * y;
                         lastInReadingOrder = x + 8 * y;
-                        next:;
+                    next:;
                     }
 
                 // Encode both coordinates in a single integer
-                return firstInReadingOrder != null ? firstInReadingOrder.Value * 64 + lastInReadingOrder : (int?) null;
+                return firstInReadingOrder != null ? firstInReadingOrder.Value * 64 + lastInReadingOrder : (int?)null;
             };
         }
 
@@ -554,7 +581,7 @@ public class BitmapsModule : MonoBehaviour
                             return null;
 
                         coord = x;
-                        next:;
+                    next:;
                     }
                 }
                 if (checkRows)
@@ -571,7 +598,7 @@ public class BitmapsModule : MonoBehaviour
                             return null;
 
                         coord = y;
-                        next:;
+                    next:;
                     }
                 }
                 return coord;
